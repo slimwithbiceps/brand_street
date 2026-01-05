@@ -204,7 +204,7 @@ client = gspread.authorize(creds)
 #     print(f"Error: {e}. Make sure the sheet exists.")
 
 # @title Reading and storing the sheet into a DataFrame
-!pip install gspread pandas pytrends --quiet
+# !pip install gspread pandas pytrends --quiet
 
 import pandas as pd
 import gspread
