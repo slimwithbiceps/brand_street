@@ -29,20 +29,20 @@ client = gspread.authorize(creds)
 
 import pandas as pd
 import gspread
-from google.colab import auth
-from google.auth import default
+# from google.colab import auth
+# from google.auth import default
 
 # --- CONFIGURATION ---
 SHEET_NAME = "BrandStreet_Seed_Data"
 
 # 1. AUTHENTICATE
-try:
-    auth.authenticate_user()
-    creds, _ = default()
-    gc = gspread.authorize(creds)
-    print("Authentication Successful.")
-except Exception as e:
-    print(f"Auth Error: {e}")
+# try:
+#     auth.authenticate_user()
+#     creds, _ = default()
+#     gc = gspread.authorize(creds)
+#     print("Authentication Successful.")
+# except Exception as e:
+#     print(f"Auth Error: {e}")
 
 # 2. READ SHEET
 try:
