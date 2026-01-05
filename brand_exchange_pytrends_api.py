@@ -23,7 +23,7 @@ json_creds = os.environ['GCP_CREDENTIALS']
 creds_dict = json.loads(json_creds)
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-client = gspread.authorize(creds)
+gc = gspread.authorize(creds)
 # @title Reading and storing the sheet into a DataFrame
 # !pip install gspread pandas pytrends --quiet
 
