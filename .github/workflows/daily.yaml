@@ -1,0 +1,31 @@
+name: Daily BrandStreet Update
+
+on:
+  schedule:
+    - cron: '30 3 * * *' # Runs at 9:00 AM IST (03:30 UTC)
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install pandas pytrends gspread oauth2client supabase
+
+      - name: Run Script
+        env:
+          # This is the missing bridge! 
+          # We map the Secrets to the Environment Variables your script asks for.
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python brand_exchange_pytrends_api.py
