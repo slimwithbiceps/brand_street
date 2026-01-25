@@ -4,28 +4,16 @@ import plotly.express as px
 from supabase import create_client, Client
 import time
 
-# --- 1. CONFIGURATION & STYLE ---
+# --- 1. CONFIG & STYLE ---
 st.set_page_config(page_title="BrandStreet", page_icon="📈", layout="wide")
-
-# Custom CSS to make it look like a pro fintech app
 st.markdown("""
     <style>
-    .stMetric {
-        background-color: #1E1E1E;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #333;
-    }
-    .stButton>button {
-        width: 100%;
-        background-color: #00E676;
-        color: black;
-        font-weight: bold;
-    }
+    .stMetric { background-color: #1E1E1E; padding: 10px; border-radius: 8px; border: 1px solid #333; }
+    div[data-testid="stExpander"] div[role="button"] p { font-size: 1.1rem; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. CONNECT TO DATABASE ---
+# --- 2. DATABASE CONNECT ---
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -34,155 +22,151 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- 3. SIDEBAR (LOGIN & PROFILE) ---
+# --- 3. SIDEBAR (USER) ---
 st.sidebar.title("BrandStreet 🐂")
-st.sidebar.markdown("The NASDAQ of Culture")
+current_user = None
 
-# MVP LOGIN SYSTEM (Select User)
-# In V2, we will implement Email/Password. For now, we list users from DB.
 try:
-    users_response = supabase.table('profiles').select("*").execute()
-    users = users_response.data
-    user_options = {u['email']: u for u in users} if users else {}
-    
-    selected_email = st.sidebar.selectbox("Simulate Login:", options=list(user_options.keys()))
-    
-    if selected_email:
-        current_user = user_options[selected_email]
-        st.sidebar.divider()
-        st.sidebar.markdown(f"**Welcome, {current_user.get('username', 'Trader')}**")
-        
-        # Display Wallet
-        st.sidebar.metric(label="Available Points", value=f"{current_user['points_balance']:,}")
-        st.sidebar.caption(f"Rank: {current_user.get('rank_title', 'Rookie')}")
-        
-        # Logout / Reset (Just clears cache for demo)
-        if st.sidebar.button("Refresh Data"):
-            st.cache_data.clear()
-            st.rerun()
+    users = supabase.table('profiles').select("*").execute().data
+    if users:
+        user_options = {u['email']: u for u in users}
+        selected_email = st.sidebar.selectbox("Login as:", list(user_options.keys()))
+        if selected_email:
+            current_user = user_options[selected_email]
+            st.sidebar.divider()
+            st.sidebar.metric("Your Balance", f"{current_user['points_balance']:,}")
+            st.sidebar.caption(f"Rank: {current_user.get('rank_title', 'Analyst')}")
+            if st.sidebar.button("🔄 Refresh"):
+                st.cache_data.clear()
+                st.rerun()
+except:
+    st.sidebar.warning("DB Connection Error")
 
-except Exception as e:
-    st.sidebar.error("Could not connect to User Database.")
-    st.sidebar.write(e)
-    current_user = None
-
-# --- 4. MAIN TABS ---
+# --- 4. MAIN APP ---
 if current_user:
-    tab1, tab2, tab3 = st.tabs(["🏛️ Marketplace", "💼 My Portfolio", "🏆 Leaderboard"])
+    tab1, tab2, tab3 = st.tabs(["🏛️ Live Market", "💼 Portfolio", "🏆 Leaderboard"])
 
-    # === TAB 1: MARKETPLACE ===
+    # === TAB 1: THE MARKET ===
     with tab1:
-        st.header("Live Market")
-        
-        # Fetch Brands
-        brands_response = supabase.table('brands').select("*").order('bes_score', desc=True).execute()
-        df_brands = pd.DataFrame(brands_response.data)
+        # A. FETCH DATA
+        response = supabase.table('brands').select("*").order('bes_score', desc=True).execute()
+        df = pd.DataFrame(response.data)
 
-        if not df_brands.empty:
-            # Metric Columns
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Market Leader", df_brands.iloc[0]['name'], f"{df_brands.iloc[0]['bes_score']}%")
-            col2.metric("Top Gainer (PoP)", f"{df_brands.iloc[0]['growth_pop']}%")
-            col3.metric("Total Brands listed", len(df_brands))
+        if df.empty:
+            st.warning("⚠️ Market is empty! Run your Python Data Engine to seed the database.")
+        else:
+            # B. MARKET MAP (THE CHART)
+            st.subheader("Market Map")
+            # Treemap: Size = Market Cap (simulated by Volume), Color = BES Score
+            fig = px.treemap(
+                df, 
+                path=[px.Constant("India"), 'sector', 'name'], 
+                values='bes_score',
+                color='growth_pop',
+                color_continuous_scale='RdYlGn',
+                color_continuous_midpoint=0,
+                hover_data=['bes_score', 'tribe'],
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
             st.divider()
 
-            # Interactive Table
-            st.subheader("Trade Desk")
+            # C. TRADING DESK
+            st.subheader("Trading Desk")
             
-            # Configure the Table Display
-            st.dataframe(
-                df_brands[['name', 'sector', 'bes_score', 'growth_pop', 'tribe']],
-                column_config={
-                    "name": "Brand",
-                    "sector": "Sector",
-                    "bes_score": st.column_config.ProgressColumn(
-                        "BES Score", format="%.1f", min_value=0, max_value=100
-                    ),
-                    "growth_pop": st.column_config.NumberColumn(
-                        "Momentum (PoP)", format="%.1f%%"
-                    ),
-                    "tribe": "Tribe"
-                },
-                use_container_width=True,
-                height=400
-            )
-
-            # --- STAKING WIDGET ---
-            with st.container():
-                st.markdown("### ⚡ Quick Stake")
-                c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+            c1, c2 = st.columns([1, 2])
+            
+            with c1:
+                # Brand Selector
+                selected_brand_name = st.selectbox("Select Asset", df['name'].tolist())
+                brand_data = df[df['name'] == selected_brand_name].iloc[0]
                 
-                with c1:
-                    target_brand = st.selectbox("Select Asset", df_brands['name'].tolist())
-                with c2:
-                    stake_amount = st.number_input("Points", min_value=100, step=100, value=100)
-                with c3:
-                    thesis = st.selectbox("Thesis", ["Hype 🚀", "Quality 💎", "Trust 🛡️", "Value 📉"])
-                with c4:
-                    st.write("") # Spacer
-                    st.write("") # Spacer
-                    if st.button("Confirm Trade"):
-                        # TRADE LOGIC
-                        if current_user['points_balance'] >= stake_amount:
-                            # 1. Get Brand Data
-                            brand_data = df_brands[df_brands['name'] == target_brand].iloc[0]
-                            
-                            # 2. Insert to Ledger
-                            trade_payload = {
+                # Show Brand Vitals
+                st.metric("BES Score", f"{brand_data['bes_score']}", delta=f"{brand_data['growth_pop']}%")
+                st.caption(f"Sector: {brand_data['sector']} | Tribe: {brand_data['tribe']}")
+
+            with c2:
+                # Buy / Sell Toggle
+                action = st.radio("Action", ["Buy (Stake)", "Sell (Liquidate)"], horizontal=True)
+                
+                if "Buy" in action:
+                    # BUY LOGIC
+                    amount = st.number_input("Amount to Stake", min_value=100, step=100)
+                    thesis = st.selectbox("Why?", ["Hype 🚀", "Quality 💎", "Trust 🛡️", "Value 📉"])
+                    
+                    if st.button("Confirm Stake", type="primary"):
+                        if current_user['points_balance'] >= amount:
+                            # 1. Update Ledger
+                            supabase.table('ledger').insert({
                                 "user_id": current_user['id'],
                                 "brand_id": brand_data['id'],
-                                "amount_staked": stake_amount,
+                                "amount_staked": amount,
                                 "entry_bes": float(brand_data['bes_score']),
-                                "thesis_tag": thesis
-                            }
-                            supabase.table('ledger').insert(trade_payload).execute()
-                            
-                            # 3. Deduct Balance
-                            new_bal = current_user['points_balance'] - stake_amount
+                                "thesis_tag": thesis,
+                                "status": "ACTIVE"
+                            }).execute()
+                            # 2. Update Balance
+                            new_bal = current_user['points_balance'] - amount
                             supabase.table('profiles').update({'points_balance': new_bal}).eq('id', current_user['id']).execute()
-                            
-                            st.success(f"Successfully staked {stake_amount} on {target_brand}!")
+                            st.success(f"Staked {amount} on {selected_brand_name}!")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Insufficient Funds!")
+                            st.error("Insufficient funds!")
+                
+                else:
+                    # SELL LOGIC
+                    # 1. Check Holdings
+                    holdings = supabase.table('ledger').select("*").eq('user_id', current_user['id']).eq('brand_id', brand_data['id']).eq('status', 'ACTIVE').execute().data
+                    total_invested = sum([h['amount_staked'] for h in holdings])
+                    
+                    st.info(f"You currently have **{total_invested} points** staked in {selected_brand_name}.")
+                    
+                    if total_invested > 0:
+                        sell_amount = st.number_input("Amount to Sell", min_value=0, max_value=total_invested, step=100)
+                        
+                        if st.button("Confirm Sell"):
+                            # Logic: We credit the user back. 
+                            # MVP Simplification: We don't partial-close specific rows yet, we just credit user and mark latest rows as CLOSED.
+                            
+                            # 1. Credit User
+                            # In real game, we apply Profit/Loss formula here. 
+                            # MVP: You get back exactly what you put in (or +10% if BES is higher)
+                            # Let's keep it simple: Return Principal.
+                            refund = sell_amount 
+                            new_bal = current_user['points_balance'] + refund
+                            supabase.table('profiles').update({'points_balance': new_bal}).eq('id', current_user['id']).execute()
+                            
+                            # 2. Update Ledger (Mark as Closed)
+                            # This is complex in SQL, so for MVP we insert a 'SELL' record
+                            supabase.table('ledger').insert({
+                                "user_id": current_user['id'],
+                                "brand_id": brand_data['id'],
+                                "amount_staked": -sell_amount, # Negative to show sell
+                                "entry_bes": float(brand_data['bes_score']),
+                                "thesis_tag": "CASH_OUT",
+                                "status": "CLOSED"
+                            }).execute()
+                            
+                            st.success(f"Sold {sell_amount}! Points refunded.")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.warning("You don't own any of this asset.")
 
     # === TAB 2: PORTFOLIO ===
     with tab2:
-        st.header("Your Holdings")
+        st.header("Your Portfolio")
+        ledger = supabase.table('ledger').select("*, brands(name)").eq('user_id', current_user['id']).order('created_at', desc=True).execute().data
         
-        # Fetch Ledger for this user
-        ledger_response = supabase.table('ledger').select("*, brands(name, bes_score)").eq('user_id', current_user['id']).execute()
-        
-        if ledger_response.data:
-            df_ledger = pd.DataFrame(ledger_response.data)
-            
-            # Flatten the nested 'brands' data
-            df_ledger['Brand'] = df_ledger['brands'].apply(lambda x: x['name'])
-            df_ledger['Current BES'] = df_ledger['brands'].apply(lambda x: x['bes_score'])
-            
-            # Calculate P&L (Simple logic: Current BES vs Entry BES)
-            df_ledger['P&L %'] = ((df_ledger['Current BES'] - df_ledger['entry_bes']) / df_ledger['entry_bes']) * 100
-            
-            # Display
-            st.dataframe(
-                df_ledger[['Brand', 'amount_staked', 'thesis_tag', 'entry_bes', 'Current BES', 'P&L %']],
-                column_config={
-                    "P&L %": st.column_config.NumberColumn("Yield", format="%.2f%%")
-                },
-                use_container_width=True
-            )
+        if ledger:
+            df_l = pd.DataFrame(ledger)
+            df_l['Brand'] = df_l['brands'].apply(lambda x: x['name'])
+            # Color code Buy vs Sell
+            st.dataframe(df_l[['created_at', 'Brand', 'amount_staked', 'thesis_tag', 'entry_bes']], use_container_width=True)
         else:
-            st.info("You haven't made any trades yet. Go to the Marketplace!")
-
-    # === TAB 3: LEADERBOARD ===
-    with tab3:
-        st.header("Top Traders")
-        # Simple query fetching top balances
-        leaders = supabase.table('profiles').select("username, points_balance, rank_title").order('points_balance', desc=True).limit(10).execute()
-        df_leaders = pd.DataFrame(leaders.data)
-        st.table(df_leaders)
+            st.info("No trades yet.")
 
 else:
-    st.warning("Please create a user in your Supabase 'profiles' table first to login.")
+    st.warning("Please login via the sidebar.")
